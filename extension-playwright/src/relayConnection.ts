@@ -41,42 +41,16 @@ export class RelayConnection {
   private _attachedTabs: Map<number, AttachedTab> = new Map();
   private _nextSessionId: number = 1;
   private _ws: WebSocket;
+  private _eventListener: (source: chrome.debugger.DebuggerSession, method: string, params: any) => void;
+  private _detachListener: (source: chrome.debugger.Debuggee, reason: string) => void;
   private _closed = false;
 
   onclose?: () => void;
 
   constructor(ws: WebSocket) {
     this._ws = ws;
-    this._ws.onmessage = async (event: MessageEvent) => {
-      let message: ExtensionCommandMessage;
-      try {
-        message = JSON.parse(event.data);
-      } catch (error: any) {
-        debugLog('Error parsing message:', error);
-        this._sendMessage({
-          error: {
-            code: -32700,
-            message: `Error parsing message: ${error.message}`,
-          },
-        });
-        return;
-      }
-
-      debugLog('Received message:', message);
-
-      const response: ExtensionResponseMessage = {
-        id: message.id,
-      };
-      try {
-        response.result = await this._handleCommand(message);
-      } catch (error: any) {
-        debugLog('Error handling command:', error);
-        response.error = error.message;
-      }
-      debugLog('Sending response:', response);
-      this._sendMessage(response);
-    };
-    this._ws.onclose = (event: CloseEvent) => {
+    this._ws.onmessage = this._onMessage.bind(this);
+    this._ws.onclose = (event) => {
       debugLog('WebSocket onclose event:', {
         code: event.code,
         reason: event.reason,
@@ -84,11 +58,13 @@ export class RelayConnection {
       });
       this._onClose();
     };
-    this._ws.onerror = (event: Event) => {
+    this._ws.onerror = (event) => {
       debugLog('WebSocket onerror event:', event);
     };
-    chrome.debugger.onEvent.addListener(this._onDebuggerEvent);
-    chrome.debugger.onDetach.addListener(this._onDebuggerDetach);
+    this._eventListener = this._onDebuggerEvent.bind(this);
+    this._detachListener = this._onDebuggerDetach.bind(this);
+    chrome.debugger.onEvent.addListener(this._eventListener);
+    chrome.debugger.onDetach.addListener(this._detachListener);
     debugLog('RelayConnection created, WebSocket readyState:', this._ws.readyState);
   }
 
@@ -191,8 +167,8 @@ export class RelayConnection {
     debugLog('Connection closing, attached tabs count:', this._attachedTabs.size);
     this._closed = true;
 
-    chrome.debugger.onEvent.removeListener(this._onDebuggerEvent);
-    chrome.debugger.onDetach.removeListener(this._onDebuggerDetach);
+    chrome.debugger.onEvent.removeListener(this._eventListener);
+    chrome.debugger.onDetach.removeListener(this._detachListener);
 
     const tabIds = Array.from(this._attachedTabs.keys());
     debugLog('Detaching all tabs:', tabIds);
@@ -215,7 +191,7 @@ export class RelayConnection {
     this.onclose?.();
   }
 
-  private _onDebuggerEvent = (source: chrome.debugger.DebuggerSession, method: string, params: any): void => {
+  private _onDebuggerEvent(source: chrome.debugger.DebuggerSession, method: string, params: any): void {
     const tab = this._attachedTabs.get(source.tabId!);
     if (!tab) return;
 
@@ -245,9 +221,9 @@ export class RelayConnection {
         params,
       },
     });
-  };
+  }
 
-  private _onDebuggerDetach = (source: chrome.debugger.Debuggee, reason: string): void => {
+  private _onDebuggerDetach(source: chrome.debugger.Debuggee, reason: string): void {
     const tabId = source.tabId;
     debugLog('_onDebuggerDetach called for tab:', tabId, 'reason:', reason, 'isAttached:', tabId ? this._attachedTabs.has(tabId) : false);
 
@@ -258,7 +234,36 @@ export class RelayConnection {
 
     debugLog(`Debugger detached from tab ${tabId}: ${reason}`);
     this.detachTab(tabId);
-  };
+  }
+
+  private _onMessage(event: MessageEvent): void {
+    this._onMessageAsync(event).catch(e => debugLog('Error handling message:', e));
+  }
+
+  private async _onMessageAsync(event: MessageEvent): Promise<void> {
+    let message: ExtensionCommandMessage;
+    try {
+      message = JSON.parse(event.data);
+    } catch (error: any) {
+      debugLog('Error parsing message:', error);
+      this._sendError(-32700, `Error parsing message: ${error.message}`);
+      return;
+    }
+
+    debugLog('Received message:', message);
+
+    const response: ExtensionResponseMessage = {
+      id: message.id,
+    };
+    try {
+      response.result = await this._handleCommand(message);
+    } catch (error: any) {
+      debugLog('Error handling command:', error);
+      response.error = error.message;
+    }
+    debugLog('Sending response:', response);
+    this._sendMessage(response);
+  }
 
   private async _handleCommand(message: ExtensionCommandMessage): Promise<any> {
     if (message.method === 'attachToTab') {
@@ -332,6 +337,15 @@ export class RelayConnection {
 
       return result;
     }
+  }
+
+  private _sendError(code: number, message: string): void {
+    this._sendMessage({
+      error: {
+        code,
+        message,
+      },
+    });
   }
 
   private _sendMessage(message: any): void {
