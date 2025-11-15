@@ -29,7 +29,54 @@ export async function startRelayServer({ port = 9988 }: { port?: number } = {}) 
   }>()
   let extensionMessageId = 0
 
-  function sendToPlaywright(message: CDPResponse | CDPEvent, source: 'extension' | 'server' = 'extension') {
+  function logCdpMessage({
+    direction,
+    method,
+    sessionId,
+    params,
+    id,
+    source
+  }: {
+    direction: 'to-playwright' | 'from-playwright' | 'from-extension'
+    method: string
+    sessionId?: string
+    params?: any
+    id?: number
+    source?: 'extension' | 'server'
+  }) {
+    const details: string[] = []
+
+    if (id !== undefined) {
+      details.push(`id=${id}`)
+    }
+
+    if (sessionId) {
+      details.push(`sessionId=${sessionId}`)
+    }
+
+    if (params) {
+      if (params.targetId) {
+        details.push(`targetId=${params.targetId}`)
+      }
+      if (params.sessionId && params.sessionId !== sessionId) {
+        details.push(`sessionIdParam=${params.sessionId}`)
+      }
+    }
+
+    const detailsStr = details.length > 0 ? ` ${chalk.gray(details.join(', '))}` : ''
+
+    if (direction === 'from-playwright') {
+      console.log(chalk.cyan('← Playwright:'), method + detailsStr)
+    } else if (direction === 'from-extension') {
+      console.log(chalk.yellow('← Extension:'), method + detailsStr)
+    } else if (direction === 'to-playwright') {
+      const color = source === 'server' ? chalk.magenta : chalk.green
+      const sourceLabel = source === 'server' ? chalk.gray(' (server-generated)') : ''
+      console.log(color('→ Playwright:'), method + detailsStr + sourceLabel)
+    }
+  }
+
+  function sendToPlaywright({ message, source = 'extension' }: { message: CDPResponse | CDPEvent; source?: 'extension' | 'server' }) {
     if (!playwrightWs) {
       return
     }
@@ -39,8 +86,13 @@ export async function startRelayServer({ port = 9988 }: { port?: number } = {}) 
       : message
 
     if ('method' in message) {
-      const color = source === 'server' ? chalk.magenta : chalk.green
-      console.log(color('→ Playwright:'), message.method, source === 'server' ? chalk.gray('(server-generated)') : '')
+      logCdpMessage({
+        direction: 'to-playwright',
+        method: message.method,
+        sessionId: 'sessionId' in message ? message.sessionId : undefined,
+        params: 'params' in message ? message.params : undefined,
+        source
+      })
     }
 
     playwrightWs.send(JSON.stringify(messageToSend))
@@ -53,7 +105,7 @@ export async function startRelayServer({ port = 9988 }: { port?: number } = {}) 
 
     const id = ++extensionMessageId
     const message = { id, method, params }
-    
+
     extensionWs.send(JSON.stringify(message))
 
     return new Promise((resolve, reject) => {
@@ -155,15 +207,22 @@ export async function startRelayServer({ port = 9988 }: { port?: number } = {}) 
             return
           }
 
-          console.log(chalk.cyan('← Playwright:'), `${message.method} (id=${message.id})`)
-
           const { id, sessionId, method, params } = message
+
+          logCdpMessage({
+            direction: 'from-playwright',
+            method,
+            sessionId,
+            id
+          })
 
           if (!extensionWs) {
             sendToPlaywright({
-              id,
-              sessionId,
-              error: { message: 'Extension not connected' }
+              message: {
+                id,
+                sessionId,
+                error: { message: 'Extension not connected' }
+              }
             })
             return
           }
@@ -174,26 +233,31 @@ export async function startRelayServer({ port = 9988 }: { port?: number } = {}) 
             if (method === 'Target.setAutoAttach' && !sessionId) {
               for (const target of connectedTargets.values()) {
                 sendToPlaywright({
-                  method: 'Target.attachedToTarget',
-                  params: {
-                    sessionId: target.sessionId,
-                    targetInfo: {
-                      ...target.targetInfo,
-                      attached: true
-                    },
-                    waitingForDebugger: false
-                  }
-                } satisfies CDPEvent, 'server')
+                  message: {
+                    method: 'Target.attachedToTarget',
+                    params: {
+                      sessionId: target.sessionId,
+                      targetInfo: {
+                        ...target.targetInfo,
+                        attached: true
+                      },
+                      waitingForDebugger: false
+                    }
+                  } satisfies CDPEvent,
+                  source: 'server'
+                })
               }
             }
 
-            sendToPlaywright({ id, sessionId, result })
+            sendToPlaywright({ message: { id, sessionId, result } })
           } catch (e) {
             console.error('Error handling CDP command:', e)
             sendToPlaywright({
-              id,
-              sessionId,
-              error: { message: (e as Error).message }
+              message: {
+                id,
+                sessionId,
+                error: { message: (e as Error).message }
+              }
             })
           }
         },
@@ -251,14 +315,19 @@ export async function startRelayServer({ port = 9988 }: { port?: number } = {}) 
           }
         } else {
           const extensionEvent = message as ExtensionEventMessage
-          
+
           if (extensionEvent.method !== 'forwardCDPEvent') {
             return
           }
 
           const { method, params, sessionId } = extensionEvent.params
 
-          console.log(chalk.yellow('← Extension:'), method)
+          logCdpMessage({
+            direction: 'from-extension',
+            method,
+            sessionId,
+            params
+          })
 
           if (method === 'Target.attachedToTarget') {
             const targetParams = params as Protocol.Target.AttachedToTargetEvent
@@ -269,23 +338,32 @@ export async function startRelayServer({ port = 9988 }: { port?: number } = {}) 
             })
 
             sendToPlaywright({
-              method: 'Target.attachedToTarget',
-              params: targetParams
-            } as CDPEvent, 'extension')
+              message: {
+                method: 'Target.attachedToTarget',
+                params: targetParams
+              } as CDPEvent,
+              source: 'extension'
+            })
           } else if (method === 'Target.detachedFromTarget') {
             const detachParams = params as Protocol.Target.DetachedFromTargetEvent
             connectedTargets.delete(detachParams.sessionId)
 
             sendToPlaywright({
-              method: 'Target.detachedFromTarget',
-              params: detachParams
-            } as CDPEvent, 'extension')
+              message: {
+                method: 'Target.detachedFromTarget',
+                params: detachParams
+              } as CDPEvent,
+              source: 'extension'
+            })
           } else {
             sendToPlaywright({
-              sessionId,
-              method,
-              params
-            } as CDPEvent, 'extension')
+              message: {
+                sessionId,
+                method,
+                params
+              } as CDPEvent,
+              source: 'extension'
+            })
           }
         }
       },
