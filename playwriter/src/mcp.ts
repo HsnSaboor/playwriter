@@ -22,7 +22,7 @@ const state: ToolState = {
   browser: null,
 }
 
-const RELAY_PORT = 9988
+const RELAY_PORT = 19988
 
 async function isPortTaken(port: number): Promise<boolean> {
   try {

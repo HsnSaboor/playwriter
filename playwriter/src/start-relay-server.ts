@@ -9,7 +9,7 @@ const logFilePath = path.join(__dirname, '..', 'relay-server.log')
 fs.writeFileSync(logFilePath, '')
 
 const log = (...args: any[]) => {
-  const message = args.map(arg => 
+  const message = args.map(arg =>
     typeof arg === 'string' ? arg : JSON.stringify(arg)
   ).join(' ')
   fs.appendFileSync(logFilePath, message + '\n')
@@ -20,7 +20,7 @@ const logger = {
   error: log
 }
 
-export async function startServer({ port = 9988 }: { port?: number } = {}) {
+export async function startServer({ port = 19988 }: { port?: number } = {}) {
   const server = await startRelayServer({ port, logger })
 
   console.log('CDP Relay Server running. Press Ctrl+C to stop.')

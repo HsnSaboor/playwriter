@@ -2,7 +2,7 @@ import { RelayConnection, debugLog } from './relayConnection'
 import { create } from 'zustand'
 
 // Relay URL - fixed port for MCP bridge
-const RELAY_URL = 'ws://localhost:9988/extension'
+const RELAY_URL = 'ws://localhost:19988/extension'
 
 type ConnectionState = 'disconnected' | 'reconnecting' | 'connected' | 'error'
 
@@ -42,10 +42,10 @@ chrome.runtime.onInstalled.addListener((details) => {
 const icons = {
   connected: {
     path: {
-      '16': '/icons/icon-green-16.png',
-      '32': '/icons/icon-green-32.png',
-      '48': '/icons/icon-green-48.png',
-      '128': '/icons/icon-green-128.png',
+      '16': '/icons/icon-16.png',
+      '32': '/icons/icon-32.png',
+      '48': '/icons/icon-48.png',
+      '128': '/icons/icon-128.png',
     },
     title: 'Connected - Click to disconnect',
     badgeText: '',
@@ -122,12 +122,12 @@ async function ensureConnection(): Promise<void> {
   }
 
   debugLog('No existing connection, creating new relay connection')
-  debugLog('Waiting for server at http://localhost:9988...')
+  debugLog('Waiting for server at http://localhost:19988...')
 
   useExtensionStore.setState({ connectionState: 'reconnecting' })
   while (true) {
     try {
-      await fetch('http://localhost:9988', { method: 'HEAD' })
+      await fetch('http://localhost:19988', { method: 'HEAD' })
       debugLog('Server is available')
       break
     } catch (error: any) {

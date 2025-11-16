@@ -44,7 +44,7 @@ class ExtensionConnection {
 
 ### New (Functional):**
 ```typescript
-export async function startRelayServer({ port = 9988 }) {
+export async function startRelayServer({ port = 19988 }) {
   const targetsRegistry = createTargetsRegistry()
   let playwrightWs: WSContext | null = null
   let extensionWs: WSContext | null = null
@@ -230,13 +230,13 @@ The new implementation is a drop-in replacement:
 
 **Old:**
 ```typescript
-const httpServer = await startHttpServer({ port: 9988 })
+const httpServer = await startHttpServer({ port: 19988 })
 const cdpRelayServer = new CDPRelayServer(httpServer)
 cdpRelayServer.stop()
 ```
 
 **New:**
 ```typescript
-const server = await startRelayServer({ port: 9988 })
+const server = await startRelayServer({ port: 19988 })
 server.close()
 ```

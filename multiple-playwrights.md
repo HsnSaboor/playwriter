@@ -23,9 +23,9 @@ The relay server acts as a bridge between:
 Each Playwright client must connect with a unique identifier in the connection path:
 
 ```
-ws://localhost:9988/cdp/client-123
-ws://localhost:9988/cdp/automation-bot-1  
-ws://localhost:9988/cdp/test-runner-42
+ws://localhost:19988/cdp/client-123
+ws://localhost:19988/cdp/automation-bot-1  
+ws://localhost:19988/cdp/test-runner-42
 ```
 
 If no client ID is provided in the path, the connection is rejected. This ensures every client can be uniquely identified and tracked.

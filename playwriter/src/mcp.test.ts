@@ -31,7 +31,7 @@ describe('MCP Server Tests', () => {
     let cleanup: (() => Promise<void>) | null = null
 
     beforeAll(async () => {
-        await killProcessOnPort(9988)
+        await killProcessOnPort(19988)
         const result = await createMCPClient()
         client = result.client
         cleanup = result.cleanup

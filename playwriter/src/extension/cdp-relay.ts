@@ -20,7 +20,7 @@ type PlaywrightClient = {
   ws: WSContext
 }
 
-export async function startRelayServer({ port = 9988, logger = console }: { port?: number; logger?: { log(...args: any[]): void; error(...args: any[]): void } } = {}) {
+export async function startRelayServer({ port = 19988, logger = console }: { port?: number; logger?: { log(...args: any[]): void; error(...args: any[]): void } } = {}) {
   const connectedTargets = new Map<string, ConnectedTarget>()
 
   const playwrightClients = new Map<string, PlaywrightClient>()

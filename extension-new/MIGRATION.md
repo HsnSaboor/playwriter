@@ -28,7 +28,7 @@ cdpRelayServer.stop()
 
 **After:**
 ```typescript
-const server = await startRelayServer({ port: 9988 })
+const server = await startRelayServer({ port: 19988 })
 // Simple object API
 server.close()
 ```

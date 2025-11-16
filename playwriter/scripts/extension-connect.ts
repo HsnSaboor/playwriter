@@ -1,7 +1,7 @@
 import playwright from 'playwright-core'
 
 async function main() {
-    const cdpEndpoint = `ws://localhost:9988/cdp/${Date.now()}`
+    const cdpEndpoint = `ws://localhost:19988/cdp/${Date.now()}`
     const browser = await playwright.chromium.connectOverCDP(cdpEndpoint, {
 
     })

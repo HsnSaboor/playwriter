@@ -49,12 +49,12 @@ Tab → chrome.debugger → Extension → /extension → /cdp → Playwright
 **Clean API:**
 
 ```typescript
-const server = await startRelayServer({ port: 9988 })
+const server = await startRelayServer({ port: 19988 })
 
 // Returns:
 // {
-//   cdpEndpoint: 'ws://localhost:9988/cdp',
-//   extensionEndpoint: 'ws://localhost:9988/extension',
+//   cdpEndpoint: 'ws://localhost:19988/cdp',
+//   extensionEndpoint: 'ws://localhost:19988/extension',
 //   close: () => void
 // }
 
@@ -67,7 +67,7 @@ server.close()
 ```typescript
 import { startRelayServer } from './relay-server.js'
 
-const server = await startRelayServer({ port: 9988 })
+const server = await startRelayServer({ port: 19988 })
 
 console.log('Extension endpoint:', server.extensionEndpoint)
 console.log('CDP endpoint:', server.cdpEndpoint)
