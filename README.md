@@ -123,6 +123,24 @@ Navigation:
   Utilities:
 - `browsermcp_browser_wait` - Wait for a specified time in seconds
 
+### vs Antigravity (Jetski)
+
+Antigravity's browser integration suffers from the same fundamental problem as BrowserMCP: it creates a separate tool for every browser action instead of using the Playwright API that LLMs already understand.
+
+**The Context Window Problem:**
+
+Jetski exposes 17+ browser tools (`capture_browser_screenshot`, `browser_click_element`, `browser_input`, `browser_scroll`, `wait_5_seconds`, etc.). Each tool definition consumes context window space with parameter schemas, descriptions, and examples. This bloated schema forces Antigravity to spawn a **subagent every time you want to use the browser**, adding significant latency and indirection to every browser interaction.
+
+**Playwriter's Approach:**
+
+- **1 tool instead of 17+** - Only the `execute` tool is needed
+- **No subagent spawning** - Browser operations happen directly without extra layers
+- **Lower latency** - No need to spawn/teardown agents for each browser task
+- **Leverages existing knowledge** - LLMs already know Playwright's API from their training data
+- **More capable** - Full Playwright API access vs a limited set of predefined actions
+
+The irony is that by trying to make browser control "simpler" with dedicated tools, these integrations make it slower, less capable, and waste context window that could be used for actual work.
+
 ## Security
 
 Playwriter is designed with security in mind, ensuring that only you can control your browser.
