@@ -53,11 +53,7 @@ interface VMContext {
   }) => Promise<string>
   getLocatorStringForElement: (element: any) => Promise<string>
   resetPlaywright: () => Promise<{ page: Page; context: BrowserContext }>
-  getLatestLogs: (options?: {
-    page?: Page
-    count?: number
-    searchFilter?: string | RegExp
-  }) => Promise<string[]>
+  getLatestLogs: (options?: { page?: Page; count?: number; searchFilter?: string | RegExp }) => Promise<string[]>
   clearAllLogs: () => void
   require: NodeRequire
   import: (specifier: string) => Promise<any>
@@ -110,7 +106,7 @@ async function sendLogToRelayServer(level: string, ...args: any[]) {
 async function isPortTaken(port: number): Promise<boolean> {
   try {
     const response = await fetch(`http://localhost:${port}/`, {
-      signal: AbortSignal.timeout(100)
+      signal: AbortSignal.timeout(100),
     })
     return response.ok
   } catch {
@@ -173,7 +169,7 @@ async function ensureConnection(): Promise<{ browser: Browser; page: Page }> {
   const page = pages[0]
 
   // Set up console listener for all existing pages
-  context.pages().forEach(p => setupPageConsoleListener(p))
+  context.pages().forEach((p) => setupPageConsoleListener(p))
 
   state.browser = browser
   state.page = page
@@ -261,7 +257,7 @@ async function getCurrentPage(timeout = 5000) {
 
       if (pages.length > 0) {
         const page = pages[0]
-        page.waitForEvent('load', {timeout})
+        page.waitForEvent('load', { timeout })
         await page.emulateMedia({ colorScheme: null })
         return page
       }
@@ -306,7 +302,7 @@ async function resetConnection(): Promise<{ browser: Browser; page: Page; contex
   const page = pages[0]
 
   // Set up console listener for all existing pages
-  context.pages().forEach(p => setupPageConsoleListener(p))
+  context.pages().forEach((p) => setupPageConsoleListener(p))
 
   state.browser = browser
   state.page = page
@@ -372,10 +368,7 @@ server.tool(
         const { page: targetPage, searchString, contextLines = 10 } = options
         if ((targetPage as any)._snapshotForAI) {
           const snapshot = await (targetPage as any)._snapshotForAI()
-          const snapshotStr =
-            typeof snapshot === 'string'
-              ? snapshot
-              : JSON.stringify(snapshot, null, 2)
+          const snapshotStr = typeof snapshot === 'string' ? snapshot : JSON.stringify(snapshot, null, 2)
 
           if (!searchString) {
             return snapshotStr
@@ -416,9 +409,7 @@ server.tool(
 
       const getLocatorStringForElement = async (element: any) => {
         if (!element || typeof element.evaluate !== 'function') {
-          throw new Error(
-            'getLocatorStringForElement: argument must be a Playwright Locator or ElementHandle',
-          )
+          throw new Error('getLocatorStringForElement: argument must be a Playwright Locator or ElementHandle')
         }
 
         return await element.evaluate(async (el: any) => {
@@ -433,19 +424,14 @@ server.tool(
               toLocator: module.toLocator,
             }
           }
-          const { createSelectorGenerator, toLocator } =
-            WIN.__selectorGenerator as SelectorGenerator
+          const { createSelectorGenerator, toLocator } = WIN.__selectorGenerator as SelectorGenerator
           const generator = createSelectorGenerator(WIN)
           const result = generator(el)
           return toLocator(result.selector, 'javascript')
         })
       }
 
-      const getLatestLogs = async (options?: {
-        page?: Page
-        count?: number
-        searchFilter?: string | RegExp
-      }) => {
+      const getLatestLogs = async (options?: { page?: Page; count?: number; searchFilter?: string | RegExp }) => {
         const { page: filterPage, count, searchFilter } = options || {}
 
         let allLogs: string[] = []
@@ -464,7 +450,7 @@ server.tool(
 
         // Filter by search string or regex
         if (searchFilter) {
-          allLogs = allLogs.filter(log => {
+          allLogs = allLogs.filter((log) => {
             if (typeof searchFilter === 'string') {
               return log.includes(searchFilter)
             } else if (searchFilter instanceof RegExp) {
@@ -506,15 +492,15 @@ server.tool(
             resetPlaywright: vmContextObj.resetPlaywright,
             require,
             import: vmContextObj.import,
-            ...usefulGlobals
+            ...usefulGlobals,
           }
-          Object.keys(vmContextObj).forEach(key => delete (vmContextObj as any)[key])
+          Object.keys(vmContextObj).forEach((key) => delete (vmContextObj as any)[key])
           Object.assign(vmContextObj, resetObj)
           return { page: newPage, context: newContext }
         },
         require,
         import: (specifier: string) => import(specifier),
-        ...usefulGlobals
+        ...usefulGlobals,
       }
 
       const vmContext = vm.createContext(vmContextObj)
@@ -563,7 +549,9 @@ server.tool(
       const MAX_LENGTH = 6000
       let finalText = responseText.trim()
       if (finalText.length > MAX_LENGTH) {
-        finalText = finalText.slice(0, MAX_LENGTH) + `\n\n[Truncated to ${MAX_LENGTH} characters. Better manage your logs or paginate them to read the full logs]`
+        finalText =
+          finalText.slice(0, MAX_LENGTH) +
+          `\n\n[Truncated to ${MAX_LENGTH} characters. Better manage your logs or paginate them to read the full logs]`
       }
 
       return {
@@ -577,29 +565,43 @@ server.tool(
     } catch (error: any) {
       const errorStack = error.stack || error.message
       console.error('Error in execute tool, attempting reset:', errorStack)
-      await sendLogToRelayServer('error', '[MCP] CRITICAL ERROR - Connection reset triggered:', errorStack)
-      
-      try {
-        await resetConnection()
-        return {
-          content: [
-            {
-              type: 'text',
-              text: `Connection was reset due to error. Please retry your command.\n\nError: ${error.message}`,
-            },
-          ],
+      if (error.message.includes('duplicate target')) {
+        await sendLogToRelayServer('error', '[MCP] CRITICAL ERROR - Connection reset triggered:', errorStack)
+        try {
+          await resetConnection()
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Connection was reset due to error. Please retry your command.\n\nError: ${error.message}`,
+              },
+            ],
+          }
+        } catch (resetError: any) {
+          await sendLogToRelayServer(
+            'error',
+            '[MCP] CRITICAL ERROR - Reset failed:',
+            resetError.stack || resetError.message,
+          )
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Error executing code: ${error.message}\n${errorStack}`,
+              },
+            ],
+            isError: true,
+          }
         }
-      } catch (resetError: any) {
-        await sendLogToRelayServer('error', '[MCP] CRITICAL ERROR - Reset failed:', resetError.stack || resetError.message)
-        return {
-          content: [
-            {
-              type: 'text',
-              text: `Error executing code: ${error.message}\n${errorStack}`,
-            },
-          ],
-          isError: true,
-        }
+      }
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Error executing code: ${error.message}\n${errorStack}`,
+          },
+        ],
+        isError: true,
       }
     }
   },
