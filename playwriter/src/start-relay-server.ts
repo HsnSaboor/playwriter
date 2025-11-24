@@ -7,19 +7,22 @@ import util from 'node:util'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const logFilePath = path.join(__dirname, '..', 'relay-server.log')
 
+process.title = 'playwriter-ws-server'
 fs.writeFileSync(logFilePath, '')
 
 const log = (...args: any[]) => {
   const message = args.map(arg =>
     typeof arg === 'string' ? arg : util.inspect(arg, { depth: null, colors: false })
   ).join(' ')
-  fs.appendFileSync(logFilePath, message + '\n')
+  return fs.promises.appendFile(logFilePath, message + '\n')
 }
 
 const logger = {
   log,
   error: log
 }
+
+
 
 export async function startServer({ port = 19988 }: { port?: number } = {}) {
   const server = await startPlayWriterCDPRelayServer({ port, logger })
