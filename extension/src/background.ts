@@ -257,7 +257,7 @@ function onDebuggerDetach(source: chrome.debugger.Debuggee, reason: `${chrome.de
   })
 
   if (reason === chrome.debugger.DetachReason.CANCELED_BY_USER) {
-    store.setState({ connectionState: 'disconnected' })
+    store.setState({ connectionState: 'disconnected', errorText: undefined })
   }
 }
 
@@ -283,7 +283,7 @@ async function attachTab(tabId: number): Promise<Protocol.Target.TargetInfo> {
       targetId: targetInfo.targetId,
       state: 'connected',
     })
-    return { tabs: newTabs, connectionState: 'connected' }
+    return { tabs: newTabs, connectionState: 'connected', errorText: undefined }
   })
 
   sendMessage({
@@ -351,7 +351,7 @@ function closeConnection(reason: string): void {
     })
   }
 
-  store.setState({ tabs: new Map() })
+  store.setState({ tabs: new Map(), connectionState: 'disconnected', errorText: undefined })
   childSessions.clear()
 
   if (ws) {
@@ -386,7 +386,7 @@ function handleConnectionClose(reason: string, code: number): void {
     return
   }
 
-  store.setState({ connectionState: 'disconnected' })
+  store.setState({ connectionState: 'disconnected', errorText: undefined })
 
   if (tabs.size > 0) {
     logger.debug('Tabs still connected, triggering reconnection')
@@ -527,7 +527,6 @@ async function disconnectTab(tabId: number): Promise<void> {
   if (updatedTabs.size === 0 && ws) {
     logger.debug('No tabs remaining, closing connection')
     closeConnection('All tabs disconnected')
-    store.setState({ connectionState: 'disconnected' })
   }
 }
 
@@ -562,9 +561,9 @@ async function reconnect(): Promise<void> {
 
     const { tabs: finalTabs } = store.getState()
     if (finalTabs.size > 0) {
-      store.setState({ connectionState: 'connected' })
+      store.setState({ connectionState: 'connected', errorText: undefined })
     } else {
-      store.setState({ connectionState: 'disconnected' })
+      store.setState({ connectionState: 'disconnected', errorText: undefined })
     }
   } catch (error: any) {
     logger.debug('Reconnection failed:', error)
