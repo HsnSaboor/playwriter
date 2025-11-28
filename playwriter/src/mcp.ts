@@ -6,6 +6,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
 import { createRequire } from 'node:module'
+import { fileURLToPath } from 'node:url'
 import vm from 'node:vm'
 import dedent from 'string-dedent'
 import { createPatch } from 'diff'
@@ -328,7 +329,7 @@ const server = new McpServer({
   version: '1.0.0',
 })
 
-const promptContent = fs.readFileSync(path.join(path.dirname(new URL(import.meta.url).pathname), 'prompt.md'), 'utf-8')
+const promptContent = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), 'prompt.md'), 'utf-8')
 
 server.tool(
   'execute',
@@ -667,3 +668,4 @@ async function main() {
 }
 
 main().catch(console.error)
+
