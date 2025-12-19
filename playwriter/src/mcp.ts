@@ -96,31 +96,7 @@ const NO_TABS_ERROR = `No browser tabs are connected. Please install and enable 
 
 
 
-async function setViewportFromBrowser({ context, wsUrl }: { context: BrowserContext; wsUrl: string }): Promise<void> {
-  const options = (context as any)._options
-  if (!options) {
-    return
-  }
-  const pages = context.pages()
-  if (pages.length === 0) {
-    return
-  }
-  const page = pages[0]
-  try {
-    const cdpSession = await getCDPSessionForPage({ page, wsUrl })
-    const metrics = await cdpSession.send('Page.getLayoutMetrics')
-    cdpSession.detach()
-    const { clientWidth, clientHeight } = metrics.visualViewport
-    if (clientWidth && clientHeight) {
-      options.viewport = { width: Math.round(clientWidth), height: Math.round(clientHeight) }
-      options.screen = options.viewport
-    }
-  } catch {
-    return
-  }
-}
-
-function setDeviceScaleFactorForMacOS(context: BrowserContext): void {
+async function setDeviceScaleFactorForMacOS(context: BrowserContext): Promise<void> {
   if (os.platform() !== 'darwin') {
     return
   }
@@ -129,9 +105,6 @@ function setDeviceScaleFactorForMacOS(context: BrowserContext): void {
     return
   }
   options.deviceScaleFactor = 2
-}
-
-async function updateEmulatedViewportForAllPages(context: BrowserContext): Promise<void> {
   for (const page of context.pages()) {
     const delegate = (page as any)._delegate
     if (delegate?.updateEmulatedViewportSize) {
@@ -236,9 +209,7 @@ async function ensureConnection(): Promise<{ browser: Browser; page: Page }> {
   // Set up console listener for all existing pages
   context.pages().forEach((p) => setupPageConsoleListener(p))
 
-  await setViewportFromBrowser({ context, wsUrl: cdpEndpoint })
-  setDeviceScaleFactorForMacOS(context)
-  await updateEmulatedViewportForAllPages(context)
+  await setDeviceScaleFactorForMacOS(context)
 
   state.browser = browser
   state.page = page
@@ -363,9 +334,7 @@ async function resetConnection(): Promise<{ browser: Browser; page: Page; contex
   // Set up console listener for all existing pages
   context.pages().forEach((p) => setupPageConsoleListener(p))
 
-  await setViewportFromBrowser({ context, wsUrl: cdpEndpoint })
-  setDeviceScaleFactorForMacOS(context)
-  await updateEmulatedViewportForAllPages(context)
+  await setDeviceScaleFactorForMacOS(context)
 
   state.browser = browser
   state.page = page
