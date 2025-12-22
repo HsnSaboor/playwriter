@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.0.27
+
+### Patch Changes
+
+- **Fixed gray icon on about:blank pages**: `about:blank` pages now show the black (clickable) icon instead of gray (restricted). Chrome returns `undefined` for `tab.url` on blank pages, which was incorrectly treated as restricted.
+- **Auto-recovery after extension replacement**: When another extension instance takes over the connection, the replaced extension now polls `/extension/status` every 3 seconds. When the slot becomes free, it clears the error state so the user can click to reconnect.
+
 ## 0.0.26
 
 ### Patch Changes

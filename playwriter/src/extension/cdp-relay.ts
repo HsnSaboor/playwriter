@@ -281,6 +281,10 @@ export async function startPlayWriterCDPRelayServer({ port = 19988, host = '127.
     return c.json({ version: VERSION })
   })
 
+  app.get('/extension/status', (c) => {
+    return c.json({ connected: extensionWs !== null })
+  })
+
   app.post('/mcp-log', async (c) => {
     try {
       const { level, args } = await c.req.json()

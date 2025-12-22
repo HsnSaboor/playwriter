@@ -14,6 +14,7 @@ let childSessions: Map<string, number> = new Map()
 let nextSessionId = 1
 let playwriterGroupId: number | null = null
 let syncTabGroupQueue: Promise<void> = Promise.resolve()
+let replacedRetryInterval: ReturnType<typeof setInterval> | null = null
 
 const store = createStore<ExtensionState>(() => ({
   tabs: new Map(),
@@ -450,6 +451,31 @@ function closeConnection(reason: string): void {
   }
 }
 
+function startReplacedRetryLoop(): void {
+  if (replacedRetryInterval) return
+  logger.debug('Starting replaced retry loop (every 3 seconds)')
+  replacedRetryInterval = setInterval(async () => {
+    if (ws?.readyState === WebSocket.OPEN || store.getState().connectionState !== 'error') {
+      clearInterval(replacedRetryInterval!)
+      replacedRetryInterval = null
+      logger.debug('Stopped replaced retry loop')
+      return
+    }
+    try {
+      const response = await fetch('http://localhost:19988/extension/status')
+      const data = await response.json()
+      if (!data.connected) {
+        store.setState({ connectionState: 'disconnected', errorText: undefined })
+        logger.debug('Extension slot is free, cleared error state')
+      } else {
+        logger.debug('Extension slot still taken, will retry...')
+      }
+    } catch {
+      logger.debug('Server not available, will retry...')
+    }
+  }, 3000)
+}
+
 function handleConnectionClose(reason: string, code: number): void {
   logger.debug('Connection closed:', { reason, code })
 
@@ -474,6 +500,7 @@ function handleConnectionClose(reason: string, code: number): void {
       connectionState: 'error',
       errorText: 'Disconnected: Replaced by another extension',
     })
+    startReplacedRetryLoop()
     return
   }
 
