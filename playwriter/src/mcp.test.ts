@@ -292,7 +292,7 @@ describe('MCP Server Tests', () => {
             name: 'execute',
             arguments: {
                 code: js`
-          await state.page.goto('https://news.ycombinator.com/item?id=1', { waitUntil: 'networkidle' });
+          await state.page.goto('https://news.ycombinator.com/item?id=1', { waitUntil: 'domcontentloaded' });
           const snapshot = await state.page._snapshotForAI();
           return snapshot;
         `,
@@ -328,7 +328,7 @@ describe('MCP Server Tests', () => {
             name: 'execute',
             arguments: {
                 code: js`
-          await state.page.goto('https://ui.shadcn.com/', { waitUntil: 'networkidle' });
+          await state.page.goto('https://ui.shadcn.com/', { waitUntil: 'domcontentloaded' });
           const snapshot = await state.page._snapshotForAI();
           return snapshot;
         `,
