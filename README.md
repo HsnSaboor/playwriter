@@ -3,7 +3,7 @@
     <picture>
         <source media="(prefers-color-scheme: dark)" srcset="banner-dark.png" />
         <source media="(prefers-color-scheme: light)" srcset="banner.png" />
-    <img src="banner.png" alt="Playwriter - For browser automation MCP" width="500" height="347" />
+    <img src="banner.png" alt="Playwriter - For browser automation MCP" width="400" height="278" />
     </picture>
     <br/>
     <br/>
