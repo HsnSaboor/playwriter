@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.0.30
+
+### Patch Changes
+
+- **Wait for main frame execution context**: `Runtime.enable` now waits for the main frame's default execution context (`auxData.isDefault === true`) instead of any context. This prevents "Frame has been detached" errors when pages weren't fully ready.
+- **Fix race condition when toggling extension**: When re-enabling the extension on a tab, ignore group removal events while the tab is still in 'connecting' state. Previously, `syncTabGroup` would ungroup 'connecting' tabs which triggered a disconnect during connection.
+
 ## 0.0.29
 
 ### Patch Changes
