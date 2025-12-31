@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.0.34
+
+### Patch Changes
+
+- **Skip server restart for newer versions**: MCP no longer kills and restarts the relay server when the server version is higher than the MCP version. This prevents older MCPs from disrupting newer server instances.
+- **Ping/pong keep-alive**: Added WebSocket ping/pong mechanism to prevent Chrome extension service worker from terminating due to inactivity.
+
 ## 0.0.33
 
 ### Patch Changes
