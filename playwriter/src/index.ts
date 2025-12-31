@@ -1,2 +1,8 @@
 export * from './cdp-relay.js'
 export * from './utils.js'
+export { CDPSession, getCDPSessionForPage } from './cdp-session.js'
+export type { ICDPSession } from './cdp-session.js'
+export { Editor } from './editor.js'
+export type { ReadResult, SearchMatch, EditResult } from './editor.js'
+export { Debugger } from './debugger.js'
+export type { BreakpointInfo, LocationInfo, EvaluateResult, ScriptInfo } from './debugger.js'

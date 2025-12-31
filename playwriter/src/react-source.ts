@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Page, Locator, ElementHandle } from 'playwright-core'
-import type { CDPSession } from './cdp-session.js'
+import type { ICDPSession, CDPSession } from './cdp-session.js'
 
 export interface ReactSourceLocation {
   fileName: string | null
@@ -25,11 +25,13 @@ function getBippyCode(): string {
 
 export async function getReactSource({
   locator,
-  cdp,
+  cdp: cdpSession,
 }: {
   locator: Locator | ElementHandle
-  cdp: CDPSession
+  cdp: ICDPSession
 }): Promise<ReactSourceLocation | null> {
+  // Cast to CDPSession for internal type safety - at runtime both are compatible
+  const cdp = cdpSession as CDPSession
   const page: Page = 'page' in locator && typeof locator.page === 'function' ? locator.page() : (locator as any)._page
 
   if (!page) {

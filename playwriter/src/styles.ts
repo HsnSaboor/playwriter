@@ -1,4 +1,4 @@
-import type { CDPSession } from './cdp-session.js'
+import type { ICDPSession, CDPSession } from './cdp-session.js'
 import type { Locator } from 'playwright-core'
 
 export interface StyleSource {
@@ -66,13 +66,15 @@ interface CSSStyleSheetHeader {
 
 export async function getStylesForLocator({
   locator,
-  cdp,
+  cdp: cdpSession,
   includeUserAgentStyles = false,
 }: {
   locator: Locator
-  cdp: CDPSession
+  cdp: ICDPSession
   includeUserAgentStyles?: boolean
 }): Promise<StylesResult> {
+  // Cast to CDPSession for internal type safety - at runtime both are compatible
+  const cdp = cdpSession as CDPSession
   await cdp.send('DOM.enable')
   await cdp.send('CSS.enable')
 

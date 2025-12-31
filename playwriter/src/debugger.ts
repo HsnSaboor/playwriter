@@ -1,4 +1,4 @@
-import type { CDPSession } from './cdp-session.js'
+import type { ICDPSession, CDPSession } from './cdp-session.js'
 import type { Protocol } from 'devtools-protocol'
 
 export interface BreakpointInfo {
@@ -61,7 +61,8 @@ export class Debugger {
    * Creates a new Debugger instance.
    *
    * @param options - Configuration options
-   * @param options.cdp - A CDPSession instance for sending CDP commands
+   * @param options.cdp - A CDPSession instance for sending CDP commands (works with both
+   *                      our CDPSession and Playwright's CDPSession)
    *
    * @example
    * ```ts
@@ -69,8 +70,9 @@ export class Debugger {
    * const dbg = new Debugger({ cdp })
    * ```
    */
-  constructor({ cdp }: { cdp: CDPSession }) {
-    this.cdp = cdp
+  constructor({ cdp }: { cdp: ICDPSession }) {
+    // Cast to CDPSession for internal type safety - at runtime both are compatible
+    this.cdp = cdp as CDPSession
     this.setupEventListeners()
   }
 

@@ -15,7 +15,7 @@ import { createPatch } from 'diff'
 import { getCdpUrl, LOG_FILE_PATH, VERSION, sleep } from './utils.js'
 import { killPortProcess } from 'kill-port-process'
 import { waitForPageLoad, WaitForPageLoadOptions, WaitForPageLoadResult } from './wait-for-page-load.js'
-import { getCDPSessionForPage, CDPSession } from './cdp-session.js'
+import { getCDPSessionForPage, CDPSession, ICDPSession } from './cdp-session.js'
 import { Debugger } from './debugger.js'
 import { Editor } from './editor.js'
 import { getStylesForLocator, formatStylesAsText, type StylesResult } from './styles.js'
@@ -77,8 +77,8 @@ interface VMContext {
   clearAllLogs: () => void
   waitForPageLoad: (options: WaitForPageLoadOptions) => Promise<WaitForPageLoadResult>
   getCDPSession: (options: { page: Page }) => Promise<CDPSession>
-  createDebugger: (options: { cdp: CDPSession }) => Debugger
-  createEditor: (options: { cdp: CDPSession }) => Editor
+  createDebugger: (options: { cdp: ICDPSession }) => Debugger
+  createEditor: (options: { cdp: ICDPSession }) => Editor
   getStylesForLocator: (options: { locator: any }) => Promise<StylesResult>
   formatStylesAsText: (styles: StylesResult) => string
   getReactSource: (options: { locator: any }) => Promise<ReactSourceLocation | null>
@@ -675,11 +675,11 @@ server.tool(
         return session
       }
 
-      const createDebugger = (options: { cdp: CDPSession }) => {
+      const createDebugger = (options: { cdp: ICDPSession }) => {
         return new Debugger(options)
       }
 
-      const createEditor = (options: { cdp: CDPSession }) => {
+      const createEditor = (options: { cdp: ICDPSession }) => {
         return new Editor(options)
       }
 

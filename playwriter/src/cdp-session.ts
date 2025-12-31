@@ -3,12 +3,26 @@ import type { Page } from 'playwright-core'
 import type { ProtocolMapping } from 'devtools-protocol/types/protocol-mapping.js'
 import type { CDPResponseBase, CDPEventBase } from './cdp-types.js'
 
+/**
+ * Common interface for CDP sessions that works with both our CDPSession
+ * and Playwright's CDPSession. Use this type when you want to accept either.
+ *
+ * Uses loose types so Playwright's CDPSession (which uses Protocol.Events)
+ * is assignable to this interface.
+ */
+export interface ICDPSession {
+  send(method: string, params?: object): Promise<unknown>
+  on(event: string, callback: (params: any) => void): unknown
+  off(event: string, callback: (params: any) => void): unknown
+  detach(): Promise<void>
+}
+
 interface PendingRequest {
   resolve: (result: unknown) => void
   reject: (error: Error) => void
 }
 
-export class CDPSession {
+export class CDPSession implements ICDPSession {
   private ws: WebSocket
   private pendingRequests = new Map<number, PendingRequest>()
   private eventListeners = new Map<string, Set<(params: unknown) => void>>()
@@ -90,15 +104,48 @@ export class CDPSession {
     })
   }
 
-  on<K extends keyof ProtocolMapping.Events>(event: K, callback: (params: ProtocolMapping.Events[K][0]) => void) {
+  on<K extends keyof ProtocolMapping.Events>(event: K, callback: (params: ProtocolMapping.Events[K][0]) => void): this {
     if (!this.eventListeners.has(event)) {
       this.eventListeners.set(event, new Set())
     }
     this.eventListeners.get(event)!.add(callback as (params: unknown) => void)
+    return this
   }
 
-  off<K extends keyof ProtocolMapping.Events>(event: K, callback: (params: ProtocolMapping.Events[K][0]) => void) {
+  /** Alias for `on` - matches Playwright's CDPSession interface */
+  addListener<K extends keyof ProtocolMapping.Events>(
+    event: K,
+    callback: (params: ProtocolMapping.Events[K][0]) => void,
+  ): this {
+    return this.on(event, callback)
+  }
+
+  off<K extends keyof ProtocolMapping.Events>(event: K, callback: (params: ProtocolMapping.Events[K][0]) => void): this {
     this.eventListeners.get(event)?.delete(callback as (params: unknown) => void)
+    return this
+  }
+
+  /** Alias for `off` - matches Playwright's CDPSession interface */
+  removeListener<K extends keyof ProtocolMapping.Events>(
+    event: K,
+    callback: (params: ProtocolMapping.Events[K][0]) => void,
+  ): this {
+    return this.off(event, callback)
+  }
+
+  /** Listen for an event once, then automatically remove the listener */
+  once<K extends keyof ProtocolMapping.Events>(event: K, callback: (params: ProtocolMapping.Events[K][0]) => void): this {
+    const onceCallback = (params: ProtocolMapping.Events[K][0]) => {
+      this.off(event, onceCallback)
+      callback(params)
+    }
+    return this.on(event, onceCallback)
+  }
+
+  /** Alias for `close` - matches Playwright's CDPSession interface */
+  detach(): Promise<void> {
+    this.close()
+    return Promise.resolve()
   }
 
   close() {
