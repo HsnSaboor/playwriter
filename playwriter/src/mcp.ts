@@ -211,10 +211,37 @@ async function killRelayServer(port: number): Promise<void> {
   } catch {}
 }
 
+/**
+ * Compare two semver versions. Returns:
+ * - negative if v1 < v2
+ * - 0 if v1 === v2
+ * - positive if v1 > v2
+ */
+function compareVersions(v1: string, v2: string): number {
+  const parts1 = v1.split('.').map(Number)
+  const parts2 = v2.split('.').map(Number)
+  const len = Math.max(parts1.length, parts2.length)
+
+  for (let i = 0; i < len; i++) {
+    const p1 = parts1[i] || 0
+    const p2 = parts2[i] || 0
+    if (p1 !== p2) {
+      return p1 - p2
+    }
+  }
+  return 0
+}
+
 async function ensureRelayServer(): Promise<void> {
   const serverVersion = await getServerVersion(RELAY_PORT)
 
   if (serverVersion === VERSION) {
+    return
+  }
+
+  // Don't restart if server version is higher than MCP version.
+  // This prevents older MCPs from killing a newer server.
+  if (serverVersion !== null && compareVersions(serverVersion, VERSION) > 0) {
     return
   }
 
