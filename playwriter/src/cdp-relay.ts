@@ -41,6 +41,23 @@ export async function startPlayWriterCDPRelayServer({ port = 19988, host = '127.
     reject: (error: Error) => void
   }>()
   let extensionMessageId = 0
+  let extensionPingInterval: ReturnType<typeof setInterval> | null = null
+
+  function startExtensionPing() {
+    if (extensionPingInterval) {
+      clearInterval(extensionPingInterval)
+    }
+    extensionPingInterval = setInterval(() => {
+      extensionWs?.send(JSON.stringify({ method: 'ping' }))
+    }, 5000)
+  }
+
+  function stopExtensionPing() {
+    if (extensionPingInterval) {
+      clearInterval(extensionPingInterval)
+      extensionPingInterval = null
+    }
+  }
 
   function logCdpMessage({
     direction,
@@ -504,6 +521,7 @@ export async function startPlayWriterCDPRelayServer({ port = 19988, host = '127.
         }
 
         extensionWs = ws
+        startExtensionPing()
         logger?.log('Extension connected with clean state')
       },
 
@@ -517,7 +535,7 @@ export async function startPlayWriterCDPRelayServer({ port = 19988, host = '127.
           return
         }
 
-        if ('id' in message) {
+        if (message.id !== undefined) {
           const pending = extensionPendingRequests.get(message.id)
           if (!pending) {
             logger?.log('Unexpected response with id:', message.id)
@@ -531,6 +549,8 @@ export async function startPlayWriterCDPRelayServer({ port = 19988, host = '127.
           } else {
             pending.resolve(message.result)
           }
+        } else if (message.method === 'pong') {
+          // Keep-alive response, nothing to do
         } else if (message.method === 'log') {
           const { level, args } = message.params
           const logFn = (logger as any)?.[level] || logger?.log
@@ -681,7 +701,8 @@ export async function startPlayWriterCDPRelayServer({ port = 19988, host = '127.
       },
 
       onClose(event, ws) {
-        logger?.log('Extension disconnected')
+        logger?.log(`Extension disconnected: code=${event.code} reason=${event.reason || 'none'}`)
+        stopExtensionPing()
 
         // If this is an old connection closing after we've already established a new one,
         // don't clear the global state

@@ -19,6 +19,7 @@ export type ExtensionCommandMessage = ForwardCDPCommand
 
 export type ExtensionResponseMessage = {
   id: number
+  method?: undefined
   result?: any
   error?: string
 }
@@ -30,6 +31,7 @@ export type ExtensionResponseMessage = {
 export type ExtensionEventMessage =
   {
     [K in keyof ProtocolMapping.Events]: {
+      id?: undefined
       method: 'forwardCDPEvent'
       params: {
         method: CDPEventFor<K>['method']
@@ -40,6 +42,7 @@ export type ExtensionEventMessage =
   }[keyof ProtocolMapping.Events]
 
 export type ExtensionLogMessage = {
+  id?: undefined
   method: 'log'
   params: {
     level: 'log' | 'debug' | 'info' | 'warn' | 'error'
@@ -47,4 +50,14 @@ export type ExtensionLogMessage = {
   }
 }
 
-export type ExtensionMessage = ExtensionResponseMessage | ExtensionEventMessage | ExtensionLogMessage
+export type ExtensionPongMessage = {
+  id?: undefined
+  method: 'pong'
+}
+
+export type ServerPingMessage = {
+  method: 'ping'
+  id?: undefined
+}
+
+export type ExtensionMessage = ExtensionResponseMessage | ExtensionEventMessage | ExtensionLogMessage | ExtensionPongMessage
