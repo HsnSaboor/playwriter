@@ -8,5 +8,8 @@ export default defineConfig({
     hookTimeout: 30000,
     exclude: ['dist', 'dist/**/*', 'node_modules/**'],
 
+    env: {
+      PLAYWRITER_NODE_ENV: 'development',
+    },
   },
 })

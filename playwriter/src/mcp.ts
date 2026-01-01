@@ -20,6 +20,8 @@ import { Debugger } from './debugger.js'
 import { Editor } from './editor.js'
 import { getStylesForLocator, formatStylesAsText, type StylesResult } from './styles.js'
 import { getReactSource, type ReactSourceLocation } from './react-source.js'
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
 
 class CodeExecutionTimeoutError extends Error {
   constructor(timeout: number) {
@@ -261,9 +263,12 @@ async function ensureRelayServer(): Promise<void> {
     mcpLog('CDP relay server not running, starting it...')
   }
 
-  const scriptPath = require.resolve('../dist/start-relay-server.js')
+  const dev = process.env.PLAYWRITER_NODE_ENV === 'development'
+  const scriptPath = dev
+    ? path.resolve(__dirname, '../src/start-relay-server.ts')
+    : require.resolve('../dist/start-relay-server.js')
 
-  const serverProcess = spawn(process.execPath, [scriptPath], {
+  const serverProcess = spawn(dev ? 'tsx' : process.execPath, [scriptPath], {
     detached: true,
     stdio: 'ignore',
     env: {
