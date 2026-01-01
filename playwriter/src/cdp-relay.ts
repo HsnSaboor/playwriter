@@ -361,15 +361,40 @@ export async function startPlayWriterCDPRelayServer({ port = 19988, host = '127.
     const clientId = c.req.param('clientId') || 'default'
 
     return {
-      onOpen(_event, ws) {
+      async onOpen(_event, ws) {
         if (playwrightClients.has(clientId)) {
           logger?.log(chalk.red(`Rejecting duplicate client ID: ${clientId}`))
           ws.close(1000, 'Client ID already connected')
           return
         }
 
+        // Add client first so it can receive Target.attachedToTarget events
         playwrightClients.set(clientId, { id: clientId, ws })
         logger?.log(chalk.green(`Playwright client connected: ${clientId} (${playwrightClients.size} total)`))
+
+        // Auto-create initial tab if enabled and no targets exist
+        if (process.env.PLAYWRITER_AUTO_ENABLE && extensionWs && connectedTargets.size === 0) {
+          try {
+            logger?.log(chalk.blue('Auto-creating initial tab for Playwright client'))
+            await sendToExtension({ method: 'createInitialTab', timeout: 10000 })
+            // Wait for Target.attachedToTarget event to populate connectedTargets
+            await new Promise((resolve) => {
+              const checkTargets = () => {
+                if (connectedTargets.size > 0) {
+                  resolve(undefined)
+                } else {
+                  setTimeout(checkTargets, 50)
+                }
+              }
+              checkTargets()
+              // Timeout after 5 seconds
+              setTimeout(() => resolve(undefined), 5000)
+            })
+            logger?.log(chalk.blue(`Auto-created tab, now have ${connectedTargets.size} targets`))
+          } catch (e) {
+            logger?.error('Failed to auto-create initial tab:', e)
+          }
+        }
       },
 
       async onMessage(event, ws) {

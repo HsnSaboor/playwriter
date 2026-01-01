@@ -217,8 +217,8 @@ describe('MCP Server Tests', () => {
 
           Return value:
           {
-            \"url\": \"https://example.com/\",
-            \"title\": \"Example Domain\"
+            "url": "https://example.com/",
+            "title": "Example Domain"
           }",
               "type": "text",
             },
@@ -1943,8 +1943,8 @@ describe('MCP Server Tests', () => {
             {
               "text": "Return value:
           {
-            "error": "Page not found",
-            "urls": []
+            "matchesDark": false,
+            "matchesLight": true
           }",
               "type": "text",
             },
@@ -2879,5 +2879,73 @@ describe('CDP Session Tests', () => {
 
         await browser.close()
         await page.close()
+    }, 60000)
+})
+
+describe('Auto-enable Tests', () => {
+    let testCtx: TestContext | null = null
+
+    // Set env var before any setup runs
+    process.env.PLAYWRITER_AUTO_ENABLE = '1'
+
+    beforeAll(async () => {
+        testCtx = await setupTestContext({ tempDirPrefix: 'pw-auto-test-' })
+
+        // Disconnect all tabs to start with a clean state
+        const serviceWorker = await getExtensionServiceWorker(testCtx.browserContext)
+        await serviceWorker.evaluate(async () => {
+            await globalThis.disconnectEverything()
+        })
+        await new Promise(r => setTimeout(r, 100))
+    }, 600000)
+
+    afterAll(async () => {
+        delete process.env.PLAYWRITER_AUTO_ENABLE
+        await cleanupTestContext(testCtx)
+        testCtx = null
+    })
+
+    const getBrowserContext = () => {
+        if (!testCtx?.browserContext) throw new Error('Browser not initialized')
+        return testCtx.browserContext
+    }
+
+    it('should auto-create a tab when Playwright connects and no tabs exist', async () => {
+        const browserContext = getBrowserContext()
+        const serviceWorker = await getExtensionServiceWorker(browserContext)
+
+        // Verify no tabs are connected
+        const tabCountBefore = await serviceWorker.evaluate(() => {
+            const state = globalThis.getExtensionState()
+            return state.tabs.size
+        })
+        expect(tabCountBefore).toBe(0)
+
+        // Connect Playwright - this should trigger auto-create
+        const browser = await chromium.connectOverCDP(getCdpUrl({ port: TEST_PORT }))
+
+        // Wait for auto-create to complete (async onOpen may not be fully awaited)
+        await new Promise(r => setTimeout(r, 500))
+
+        // Verify a page was auto-created
+        const pages = browser.contexts()[0].pages()
+        expect(pages.length).toBeGreaterThan(0)
+
+        const autoCreatedPage = pages[0]
+        expect(autoCreatedPage.url()).toBe('about:blank')
+
+        // Verify extension state shows the tab as connected
+        const tabCountAfter = await serviceWorker.evaluate(() => {
+            const state = globalThis.getExtensionState()
+            return state.tabs.size
+        })
+        expect(tabCountAfter).toBe(1)
+
+        // Verify we can interact with the auto-created page
+        await autoCreatedPage.setContent('<h1>Auto-created page</h1>')
+        const title = await autoCreatedPage.locator('h1').textContent()
+        expect(title).toBe('Auto-created page')
+
+        await browser.close()
     }, 60000)
 })

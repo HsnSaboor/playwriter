@@ -16,12 +16,12 @@ let ws: WebSocket | null = null
 let childSessions: Map<string, number> = new Map()
 let nextSessionId = 1
 let playwriterGroupId: number | null = null
-let syncTabGroupQueue: Promise<void> = Promise.resolve()
+let tabGroupQueue: Promise<void> = Promise.resolve()
 let replacedRetryInterval: ReturnType<typeof setInterval> | null = null
 
 const store = createStore<ExtensionState>(() => ({
   tabs: new Map(),
-  connectionState: 'disconnected',
+  connectionState: 'idle',
   currentTabId: undefined,
   errorText: undefined,
 }))
@@ -131,6 +131,22 @@ async function syncTabGroup(): Promise<void> {
 
     const existingGroups = await chrome.tabGroups.query({ title: 'playwriter' })
 
+    // Check for no connected tabs FIRST, before setting playwriterGroupId
+    // This prevents a race condition where onTabUpdated sees playwriterGroupId !== null
+    if (connectedTabIds.length === 0) {
+      for (const group of existingGroups) {
+        const tabsInGroup = await chrome.tabs.query({ groupId: group.id })
+        for (const tab of tabsInGroup) {
+          if (tab.id) {
+            await chrome.tabs.ungroup(tab.id)
+          }
+        }
+        logger.debug('Cleared playwriter group:', group.id)
+      }
+      playwriterGroupId = null
+      return
+    }
+
     if (existingGroups.length > 1) {
       const [keep, ...duplicates] = existingGroups
       for (const group of duplicates) {
@@ -145,20 +161,6 @@ async function syncTabGroup(): Promise<void> {
       playwriterGroupId = keep.id
     } else if (existingGroups.length === 1) {
       playwriterGroupId = existingGroups[0].id
-    }
-
-    if (connectedTabIds.length === 0) {
-      for (const group of existingGroups) {
-        const tabsInGroup = await chrome.tabs.query({ groupId: group.id })
-        for (const tab of tabsInGroup) {
-          if (tab.id) {
-            await chrome.tabs.ungroup(tab.id)
-          }
-        }
-        logger.debug('Cleared playwriter group:', group.id)
-      }
-      playwriterGroupId = null
-      return
     }
 
     const allTabs = await chrome.tabs.query({})
@@ -372,7 +374,7 @@ function onDebuggerDetach(source: chrome.debugger.Debuggee, reason: `${chrome.de
 
   if (reason === chrome.debugger.DetachReason.CANCELED_BY_USER) {
     // Chrome's debugger info bar cancellation detaches ALL debugger sessions, not just one tab
-    store.setState({ connectionState: 'disconnected', errorText: undefined })
+    store.setState({ connectionState: 'idle', errorText: undefined })
   }
 }
 
@@ -478,7 +480,7 @@ function closeConnection(reason: string): void {
     })
   }
 
-  store.setState({ tabs: new Map(), connectionState: 'disconnected', errorText: undefined })
+  store.setState({ tabs: new Map(), connectionState: 'idle', errorText: undefined })
   childSessions.clear()
 
   if (ws) {
@@ -491,7 +493,7 @@ function startReplacedRetryLoop(): void {
   if (replacedRetryInterval) return
   logger.debug('Starting replaced retry loop (every 3 seconds)')
   replacedRetryInterval = setInterval(async () => {
-    if (ws?.readyState === WebSocket.OPEN || store.getState().connectionState !== 'error') {
+    if (ws?.readyState === WebSocket.OPEN || store.getState().connectionState !== 'extension-replaced') {
       clearInterval(replacedRetryInterval!)
       replacedRetryInterval = null
       logger.debug('Stopped replaced retry loop')
@@ -501,7 +503,7 @@ function startReplacedRetryLoop(): void {
       const response = await fetch(`http://localhost:${RELAY_PORT}/extension/status`)
       const data = await response.json()
       if (!data.connected) {
-        store.setState({ connectionState: 'disconnected', errorText: undefined })
+        store.setState({ connectionState: 'idle', errorText: undefined })
         logger.debug('Extension slot is free, cleared error state')
       } else {
         logger.debug('Extension slot still taken, will retry...')
@@ -533,26 +535,21 @@ function handleConnectionClose(reason: string, code: number): void {
     logger.debug('Connection replaced by another extension instance')
     store.setState({
       tabs: new Map(),
-      connectionState: 'error',
+      connectionState: 'extension-replaced',
       errorText: 'Disconnected: Replaced by another extension',
     })
     startReplacedRetryLoop()
     return
   }
 
-  if (tabs.size > 0) {
-    logger.debug('Tabs still connected, triggering reconnection')
-    store.setState((state) => {
-      const newTabs = new Map(state.tabs)
-      for (const [tabId, tab] of newTabs) {
-        newTabs.set(tabId, { ...tab, state: 'connecting' })
-      }
-      return { tabs: newTabs }
-    })
-    void reconnect()
-  } else {
-    store.setState({ connectionState: 'disconnected', errorText: undefined })
-  }
+  // For normal disconnects, set tabs to 'connecting' state and let maintainConnection handle reconnect
+  store.setState((state) => {
+    const newTabs = new Map(state.tabs)
+    for (const [tabId, tab] of newTabs) {
+      newTabs.set(tabId, { ...tab, state: 'connecting' })
+    }
+    return { tabs: newTabs, connectionState: 'idle', errorText: undefined }
+  })
 }
 
 async function ensureConnection(): Promise<void> {
@@ -562,14 +559,18 @@ async function ensureConnection(): Promise<void> {
   }
 
   logger.debug(`Waiting for server at http://localhost:${RELAY_PORT}...`)
-  store.setState({ connectionState: 'reconnecting' })
 
-  while (true) {
+  // Retry for up to 30 seconds, then give up (maintainConnection will retry later)
+  const maxAttempts = 30
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
       await fetch(`http://localhost:${RELAY_PORT}`, { method: 'HEAD' })
       logger.debug('Server is available')
       break
     } catch {
+      if (attempt === maxAttempts - 1) {
+        throw new Error('Server not available after 30 seconds')
+      }
       logger.debug('Server not available, retrying in 1 second...')
       await sleep(1000)
     }
@@ -628,6 +629,25 @@ async function ensureConnection(): Promise<void> {
       return
     }
 
+    // Handle createInitialTab - create a new tab when Playwright connects and no tabs exist
+    if (message.method === 'createInitialTab') {
+      try {
+        logger.debug('Creating initial tab for Playwright client')
+        const tab = await chrome.tabs.create({ url: 'about:blank', active: false })
+        if (tab.id) {
+          await connectTab(tab.id)
+          logger.debug('Initial tab created and connected:', tab.id)
+          sendMessage({ id: message.id, result: { success: true, tabId: tab.id } })
+        } else {
+          throw new Error('Failed to create tab - no tab ID returned')
+        }
+      } catch (error: any) {
+        logger.debug('Failed to create initial tab:', error)
+        sendMessage({ id: message.id, error: error.message })
+      }
+      return
+    }
+
     const response: ExtensionResponseMessage = { id: message.id }
     try {
       response.result = await handleCommand(message as ExtensionCommandMessage)
@@ -653,6 +673,53 @@ async function ensureConnection(): Promise<void> {
   logger.debug('Connection established')
 }
 
+async function maintainConnection(): Promise<void> {
+  while (true) {
+    if (ws?.readyState === WebSocket.OPEN) {
+      await sleep(1000)
+      continue
+    }
+
+    // Don't auto-reconnect if replaced by another extension
+    if (store.getState().connectionState === 'extension-replaced') {
+      await sleep(1000)
+      continue
+    }
+
+    // Try to connect silently in background - don't show 'connecting' badge
+    // Individual tab states will show 'connecting' when user explicitly clicks
+    try {
+      await ensureConnection()
+      store.setState({ connectionState: 'connected' })
+
+      // Re-attach any tabs that were in 'connecting' state (from a previous disconnect)
+      const tabsToReattach = Array.from(store.getState().tabs.entries())
+        .filter(([_, tab]) => tab.state === 'connecting')
+        .map(([tabId]) => tabId)
+
+      for (const tabId of tabsToReattach) {
+        try {
+          await chrome.tabs.get(tabId)
+          await attachTab(tabId)
+          logger.debug('Successfully re-attached tab:', tabId)
+        } catch (error: any) {
+          logger.debug('Failed to re-attach tab:', tabId, error.message)
+          store.setState((state) => {
+            const newTabs = new Map(state.tabs)
+            newTabs.delete(tabId)
+            return { tabs: newTabs }
+          })
+        }
+      }
+    } catch (error: any) {
+      logger.debug('Connection attempt failed:', error.message)
+      store.setState({ connectionState: 'idle' })
+    }
+
+    await sleep(5000)
+  }
+}
+
 async function connectTab(tabId: number): Promise<void> {
   try {
     logger.debug(`Starting connection to tab ${tabId}`)
@@ -673,8 +740,7 @@ async function connectTab(tabId: number): Promise<void> {
     store.setState((state) => {
       const newTabs = new Map(state.tabs)
       newTabs.set(tabId, { state: 'error', errorText: `Error: ${error.message}` })
-      const nextConnectionState = state.connectionState === 'reconnecting' ? 'disconnected' : state.connectionState
-      return { tabs: newTabs, connectionState: nextConnectionState }
+      return { tabs: newTabs }
     })
   }
 }
@@ -689,58 +755,7 @@ async function disconnectTab(tabId: number): Promise<void> {
   }
 
   detachTab(tabId, true)
-
-  const { tabs: updatedTabs } = store.getState()
-  if (updatedTabs.size === 0 && ws) {
-    logger.debug('No tabs remaining, closing connection')
-    closeConnection('All tabs disconnected')
-  }
-}
-
-async function reconnect(): Promise<void> {
-  logger.debug('Starting reconnection')
-  store.setState({ connectionState: 'reconnecting', errorText: undefined })
-  const { tabs } = store.getState()
-  const tabsToReconnect = Array.from(tabs.keys())
-  logger.debug('Tabs to reconnect:', tabsToReconnect)
-
-  try {
-    await ensureConnection()
-
-    for (const tabId of tabsToReconnect) {
-      if (!store.getState().tabs.has(tabId)) {
-        logger.debug('Tab', tabId, 'was manually disconnected during reconnection, skipping')
-        continue
-      }
-
-      try {
-        await chrome.tabs.get(tabId)
-        await attachTab(tabId)
-        logger.debug('Successfully re-attached tab:', tabId)
-      } catch (error: any) {
-        logger.debug('Failed to re-attach tab:', tabId, error.message)
-        store.setState((state) => {
-          const newTabs = new Map(state.tabs)
-          newTabs.delete(tabId)
-          return { tabs: newTabs }
-        })
-      }
-    }
-
-    const { tabs: finalTabs } = store.getState()
-    if (finalTabs.size > 0) {
-      store.setState({ connectionState: 'connected', errorText: undefined })
-    } else {
-      store.setState({ connectionState: 'disconnected', errorText: undefined })
-    }
-  } catch (error: any) {
-    logger.debug('Reconnection failed:', error)
-    store.setState({
-      tabs: new Map(),
-      connectionState: 'error',
-      errorText: 'Reconnection failed - Click to retry',
-    })
-  }
+  // WS connection is maintained even with no tabs - maintainConnection handles it
 }
 
 async function toggleExtensionForActiveTab(): Promise<{ isConnected: boolean; state: ExtensionState }> {
@@ -754,7 +769,7 @@ async function toggleExtensionForActiveTab(): Promise<{ isConnected: boolean; st
     const check = () => {
       const state = store.getState()
       const tabInfo = state.tabs.get(tab.id!)
-      if (tabInfo?.state === 'connecting' || state.connectionState === 'reconnecting') {
+      if (tabInfo?.state === 'connecting') {
         setTimeout(check, 100)
         return
       }
@@ -769,20 +784,16 @@ async function toggleExtensionForActiveTab(): Promise<{ isConnected: boolean; st
 }
 
 async function disconnectEverything(): Promise<void> {
-  const { tabs } = store.getState()
-
-  for (const tabId of tabs.keys()) {
-    await disconnectTab(tabId)
-  }
-
-  if (ws) {
-    closeConnection('Manual full disconnect')
-    store.setState({
-      connectionState: 'disconnected',
-      tabs: new Map(),
-      errorText: undefined,
-    })
-  }
+  // Queue disconnect operation to serialize with other tab group operations
+  tabGroupQueue = tabGroupQueue.then(async () => {
+    playwriterGroupId = null
+    const { tabs } = store.getState()
+    for (const tabId of tabs.keys()) {
+      await disconnectTab(tabId)
+    }
+  })
+  await tabGroupQueue
+  // WS connection is maintained - maintainConnection handles it
 }
 
 async function resetDebugger(): Promise<void> {
@@ -825,7 +836,7 @@ const icons = {
     badgeText: '...',
     badgeColor: [64, 64, 64, 255] as [number, number, number, number],
   },
-  disconnected: {
+  idle: {
     path: {
       '16': '/icons/icon-black-16.png',
       '32': '/icons/icon-black-32.png',
@@ -847,7 +858,18 @@ const icons = {
     badgeText: '',
     badgeColor: [64, 64, 64, 255] as [number, number, number, number],
   },
-  error: {
+  extensionReplaced: {
+    path: {
+      '16': '/icons/icon-gray-16.png',
+      '32': '/icons/icon-gray-32.png',
+      '48': '/icons/icon-gray-48.png',
+      '128': '/icons/icon-gray-128.png',
+    },
+    title: 'Replaced by another extension - Click to retry',
+    badgeText: '!',
+    badgeColor: [220, 38, 38, 255] as [number, number, number, number],
+  },
+  tabError: {
     path: {
       '16': '/icons/icon-gray-16.png',
       '32': '/icons/icon-gray-32.png',
@@ -875,23 +897,22 @@ async function updateIcons(): Promise<void> {
     const tabUrl = tabId !== undefined ? tabUrlMap.get(tabId) : undefined
 
     const iconConfig = (() => {
-      if (connectionState === 'error') return icons.error
+      if (connectionState === 'extension-replaced') return icons.extensionReplaced
       if (tabId !== undefined && isRestrictedUrl(tabUrl)) return icons.restricted
-      if (connectionState === 'reconnecting') return icons.connecting
-      if (tabInfo?.state === 'error') return icons.error
+      if (tabInfo?.state === 'error') return icons.tabError
       if (tabInfo?.state === 'connecting') return icons.connecting
       if (tabInfo?.state === 'connected') return icons.connected
-      return icons.disconnected
+      return icons.idle
     })()
 
     const title = (() => {
-      if (connectionState === 'error' && errorText) return errorText
+      if (connectionState === 'extension-replaced' && errorText) return errorText
       if (tabInfo?.errorText) return tabInfo.errorText
       return iconConfig.title
     })()
 
     const badgeText = (() => {
-      if (iconConfig === icons.connected || iconConfig === icons.disconnected || iconConfig === icons.restricted) {
+      if (iconConfig === icons.connected || iconConfig === icons.idle || iconConfig === icons.restricted) {
         return connectedCount > 0 ? String(connectedCount) : ''
       }
       return iconConfig.badgeText
@@ -929,22 +950,11 @@ async function onActionClicked(tab: chrome.tabs.Tab): Promise<void> {
   const { tabs, connectionState } = store.getState()
   const tabInfo = tabs.get(tab.id)
 
-  if (connectionState === 'error') {
-    logger.debug('Global error state - retrying reconnection')
-    await reconnect()
-    return
-  }
-
-  if (connectionState === 'reconnecting') {
-    logger.debug('User clicked during reconnection, canceling and disconnecting all tabs')
-    for (const tabId of tabs.keys()) {
-      detachTab(tabId, true)
-    }
-    store.setState({ connectionState: 'disconnected', tabs: new Map(), errorText: undefined })
-    if (ws) {
-      ws.close(1000, 'User cancelled reconnection')
-      ws = null
-    }
+  // If in extension-replaced state, clear it to allow reconnection
+  if (connectionState === 'extension-replaced') {
+    logger.debug('Clearing extension-replaced state, will retry connection')
+    store.setState({ connectionState: 'idle', errorText: undefined })
+    // maintainConnection will pick up and retry
     return
   }
 
@@ -967,6 +977,7 @@ async function onActionClicked(tab: chrome.tabs.Tab): Promise<void> {
 }
 
 resetDebugger()
+maintainConnection()
 
 chrome.contextMenus.remove('playwriter-pin-element').catch(() => {}).finally(() => {
   chrome.contextMenus.create({
@@ -1000,7 +1011,7 @@ store.subscribe((state, prevState) => {
   updateContextMenuVisibility()
   const tabsChanged = serializeTabs(state.tabs) !== serializeTabs(prevState.tabs)
   if (tabsChanged) {
-    syncTabGroupQueue = syncTabGroupQueue.then(syncTabGroup).catch((e) => {
+    tabGroupQueue = tabGroupQueue.then(syncTabGroup).catch((e) => {
       logger.debug('syncTabGroup error:', e)
     })
   }
@@ -1012,22 +1023,31 @@ chrome.tabs.onActivated.addListener(onTabActivated)
 chrome.action.onClicked.addListener(onActionClicked)
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   void updateIcons()
-  if (changeInfo.groupId !== undefined && playwriterGroupId !== null) {
-    const { tabs } = store.getState()
-    if (changeInfo.groupId === playwriterGroupId) {
-      if (!tabs.has(tabId) && !isRestrictedUrl(tab.url)) {
-        logger.debug('Tab manually added to playwriter group:', tabId)
-        void connectTab(tabId)
-      }
-    } else if (tabs.has(tabId)) {
-      const tabInfo = tabs.get(tabId)
-      if (tabInfo?.state === 'connecting') {
-        logger.debug('Tab removed from group while connecting, ignoring:', tabId)
+  if (changeInfo.groupId !== undefined) {
+    // Queue tab group operations to serialize with syncTabGroup and disconnectEverything
+    tabGroupQueue = tabGroupQueue.then(async () => {
+      // Re-check conditions after queue - state may have changed
+      if (playwriterGroupId === null) {
         return
       }
-      logger.debug('Tab manually removed from playwriter group:', tabId)
-      void disconnectTab(tabId)
-    }
+      const { tabs } = store.getState()
+      if (changeInfo.groupId === playwriterGroupId) {
+        if (!tabs.has(tabId) && !isRestrictedUrl(tab.url)) {
+          logger.debug('Tab manually added to playwriter group:', tabId)
+          await connectTab(tabId)
+        }
+      } else if (tabs.has(tabId)) {
+        const tabInfo = tabs.get(tabId)
+        if (tabInfo?.state === 'connecting') {
+          logger.debug('Tab removed from group while connecting, ignoring:', tabId)
+          return
+        }
+        logger.debug('Tab manually removed from playwriter group:', tabId)
+        await disconnectTab(tabId)
+      }
+    }).catch((e) => {
+      logger.debug('onTabUpdated handler error:', e)
+    })
   }
 })
 

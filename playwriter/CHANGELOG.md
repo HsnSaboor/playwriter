@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.0.35
+
+### Patch Changes
+
+- **Persistent WS connection**: Extension now connects to relay server at startup and maintains connection indefinitely, retrying every 5 seconds silently in background
+- **Silent background retry**: Connecting badge only shows when user explicitly clicks to attach a tab, not during background reconnection attempts
+- **Fixed tab group race condition**: All tab group operations now queue through `tabGroupQueue` to prevent race conditions between `syncTabGroup`, `disconnectEverything`, and `onTabUpdated`
+- **Simplified connection states**: Renamed `'disconnected'` to `'idle'`, removed global `'connecting'` state (only individual tabs show connecting state)
+- **Auto-create initial tab**: When `PLAYWRITER_AUTO_ENABLE` env var is set, automatically creates an about:blank tab when Playwright connects and no tabs exist
+
 ## 0.0.34
 
 ### Patch Changes
