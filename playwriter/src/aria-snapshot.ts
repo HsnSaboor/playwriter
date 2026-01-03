@@ -17,6 +17,26 @@ export interface AriaSnapshotResult {
 
 const LABELS_CONTAINER_ID = '__playwriter_labels__'
 
+// Roles that represent truly interactive elements (can be clicked, typed into, etc.)
+const INTERACTIVE_ROLES = new Set([
+  'button',
+  'link',
+  'textbox',
+  'combobox',
+  'searchbox',
+  'checkbox',
+  'radio',
+  'slider',
+  'spinbutton',
+  'switch',
+  'menuitem',
+  'menuitemcheckbox',
+  'menuitemradio',
+  'option',
+  'tab',
+  'treeitem',
+])
+
 // Use String.raw for CSS syntax highlighting in editors
 const css = String.raw
 
@@ -144,9 +164,12 @@ export async function getAriaSnapshot({ page }: { page: Page }): Promise<AriaSna
 }
 
 /**
- * Show Vimium-style labels on all interactive elements.
+ * Show Vimium-style labels on interactive elements.
  * Labels are yellow badges positioned above each element showing the aria ref (e.g., "e1", "e2").
  * Use with screenshots so agents can see which elements are interactive.
+ *
+ * By default, only shows labels for truly interactive roles (button, link, textbox, etc.)
+ * to reduce visual clutter. Set `interactiveOnly: false` to show all elements with refs.
  *
  * @example
  * ```ts
@@ -157,11 +180,22 @@ export async function getAriaSnapshot({ page }: { page: Page }): Promise<AriaSna
  * await hideAriaRefLabels({ page })
  * ```
  */
-export async function showAriaRefLabels({ page }: { page: Page }): Promise<{
+export async function showAriaRefLabels({ page, interactiveOnly = true }: {
+  page: Page
+  interactiveOnly?: boolean
+}): Promise<{
   snapshot: string
   labelCount: number
 }> {
-  const { snapshot, refHandles } = await getAriaSnapshot({ page })
+  const { snapshot, refHandles, refToElement } = await getAriaSnapshot({ page })
+
+  // Filter to only interactive elements if requested
+  const filteredRefs = interactiveOnly
+    ? refHandles.filter(({ ref }) => {
+        const info = refToElement.get(ref)
+        return info && INTERACTIVE_ROLES.has(info.role)
+      })
+    : refHandles
 
   // Single evaluate call: create container, styles, and all labels
   // ElementHandles get unwrapped to DOM elements in browser context
@@ -216,7 +250,7 @@ export async function showAriaRefLabels({ page }: { page: Page }): Promise<{
       return count
     },
     {
-      refs: refHandles.map(({ ref, handle }) => ({ ref, element: handle })),
+      refs: filteredRefs.map(({ ref, handle }) => ({ ref, element: handle })),
       containerId: LABELS_CONTAINER_ID,
       containerStyles: CONTAINER_STYLES,
       labelStyles: LABEL_STYLES,
