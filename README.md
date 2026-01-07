@@ -7,7 +7,7 @@
     </picture>
     <br/>
     <br/>
-    <p>Like Playwright MCP but via extension. 90% less context window. 10x more capable (full playwright API)</p>
+    <p>Like Playwright MCP but via extension. 80% less context window. 10x more capable (full playwright API)</p>
     <br/>
     <a href="https://chromewebstore.google.com/detail/playwriter-mcp/jfeammnjpkecdekppnclgkkffahnhfhe">
         <strong>Install Extension from Chrome Web Store</strong>
@@ -327,9 +327,9 @@ Run agents in isolated environments (devcontainers, VMs, SSH) while controlling 
 **On host (where Chrome runs):**
 
 ```bash
-npx playwriter serve --token <secret>
+npx -y playwriter serve --token <secret>
 # or use environment variable:
-PLAYWRITER_TOKEN=<secret> npx playwriter serve
+PLAYWRITER_TOKEN=<secret> npx -y playwriter serve
 ```
 
 **In container/VM (where agent runs):**
