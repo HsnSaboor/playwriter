@@ -86,9 +86,16 @@ export async function ensurePersistentRelay(options?: {
    * @default 10000
    */
   timeout?: number
+
+  /**
+   * Create automation tabs in a separate Chrome window instead of tab groups.
+   * @default false
+   */
+  separateWindow?: boolean
 }): Promise<EnsurePersistentRelayResult> {
   const port = options?.port ?? DEFAULT_PORT
   const timeout = options?.timeout ?? DEFAULT_TIMEOUT
+  const separateWindow = options?.separateWindow ?? false
 
   const existingVersion = await getServerVersion(port)
 
@@ -138,10 +145,15 @@ export async function ensurePersistentRelay(options?: {
     command = 'bun'
   }
 
+  const env = { ...process.env }
+  if (separateWindow) {
+    env.PLAYWRITER_SEPARATE_WINDOW = '1'
+  }
+
   const serverProcess = spawn(command, [scriptPath], {
     detached: true,
     stdio: 'ignore',
-    env: { ...process.env },
+    env,
   })
   serverProcess.unref()
 
@@ -277,11 +289,18 @@ export async function connectToPlaywriter(options?: {
    * @default 30000
    */
   timeout?: number
+
+  /**
+   * Create automation tabs in a separate Chrome window instead of tab groups.
+   * @default false
+   */
+  separateWindow?: boolean
 }): Promise<Browser> {
   const port = options?.port ?? DEFAULT_PORT
   const timeout = options?.timeout ?? 30000
+  const separateWindow = options?.separateWindow ?? false
 
-  await ensurePersistentRelay({ port, timeout })
+  await ensurePersistentRelay({ port, timeout, separateWindow })
   await waitForExtension({ port, timeout })
 
   const cdpUrl = getCdpUrl({ port })

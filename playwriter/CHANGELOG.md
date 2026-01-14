@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.0.49
+
+### Features
+
+- **Separate Window Mode**: Run automation tabs in a dedicated, visible Chrome window
+  - Enabled via `PLAYWRITER_SEPARATE_WINDOW=1` env var or `separateWindow: true` option
+  - Provides visual isolation from user's main browsing
+  - Auto-closes the window when all automation tabs are disconnected
+  - Opt-in feature (default remains tab groups)
+
 ## 0.0.48
 
 ### Features

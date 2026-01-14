@@ -209,6 +209,34 @@ The function automatically shows labels, takes a screenshot, hides labels, and i
 
 ### Environment Variables
 
+#### `PLAYWRITER_SEPARATE_WINDOW`
+
+When set to "1", the MCP will run automation tabs in a dedicated, visible Chrome window instead of grouping them in your main window. This provides visual isolation for your automation tasks.
+
+```json
+{
+  "mcpServers": {
+    "playwriter": {
+      "command": "npx",
+      "args": ["playwriter@latest"],
+      "env": {
+        "PLAYWRITER_SEPARATE_WINDOW": "1"
+      }
+    }
+  }
+}
+```
+
+Or programmatically:
+
+```typescript
+import { connectToPlaywriter } from 'playwriter'
+
+const browser = await connectToPlaywriter({ 
+  separateWindow: true 
+})
+```
+
 #### `PLAYWRITER_AUTO_ENABLE`
 
 When set, the MCP will automatically create an initial tab when a Playwright client connects and no tabs are currently enabled. This is useful for fully automated workflows where you don't want to manually click the extension icon.

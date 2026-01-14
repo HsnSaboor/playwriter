@@ -15,4 +15,6 @@ export interface ExtensionState {
   connectionState: ConnectionState
   currentTabId: number | undefined
   errorText: string | undefined
+  separateWindow: boolean
+  workerWindowId: number | null
 }

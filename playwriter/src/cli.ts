@@ -47,11 +47,14 @@ cli
       process.exit(1)
     })
 
+    const separateWindow = !!process.env.PLAYWRITER_SEPARATE_WINDOW
+
     const server = await startPlayWriterCDPRelayServer({
       port: RELAY_PORT,
       host: options.host,
       token,
       logger,
+      separateWindow,
     })
 
     console.log('Playwriter CDP relay server started')

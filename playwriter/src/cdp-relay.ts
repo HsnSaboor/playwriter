@@ -30,7 +30,19 @@ export type RelayServer = {
   off<K extends keyof RelayServerEvents>(event: K, listener: RelayServerEvents[K]): void
 }
 
-export async function startPlayWriterCDPRelayServer({ port = 19988, host = '127.0.0.1', token, logger }: { port?: number; host?: string; token?: string; logger?: { log(...args: any[]): void; error(...args: any[]): void } } = {}): Promise<RelayServer> {
+export async function startPlayWriterCDPRelayServer({
+  port = 19988,
+  host = '127.0.0.1',
+  token,
+  logger,
+  separateWindow = false,
+}: {
+  port?: number
+  host?: string
+  token?: string
+  logger?: { log(...args: any[]): void; error(...args: any[]): void }
+  separateWindow?: boolean
+} = {}): Promise<RelayServer> {
   const emitter = new EventEmitter()
   const connectedTargets = new Map<string, ConnectedTarget>()
 
@@ -803,6 +815,10 @@ export async function startPlayWriterCDPRelayServer({ port = 19988, host = '127.
         extensionWs = ws
         startExtensionPing()
         logger?.log('Extension connected with clean state')
+
+        if (separateWindow) {
+          ws.send(JSON.stringify({ method: 'setWindowMode', params: { separateWindow: true } }))
+        }
       },
 
       async onMessage(event, ws) {

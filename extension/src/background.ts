@@ -118,6 +118,15 @@ class ConnectionManager {
         return
       }
 
+      // Handle setWindowMode - configure whether to use separate window for automation tabs
+      if (message.method === 'setWindowMode') {
+        const { separateWindow } = message.params || {}
+        logger.debug('Setting window mode:', { separateWindow })
+        store.setState({ separateWindow: !!separateWindow, workerWindowId: null })
+        sendMessage({ id: message.id, result: { success: true } })
+        return
+      }
+
       // Handle createInitialTab - create a new tab when Playwright connects and no tabs exist
       // We use skipAttachedEvent: true because the relay's Target.setAutoAttach handler will send
       // Target.attachedToTarget for all targets in connectedTargets. If we also sent it here,
@@ -132,7 +141,10 @@ class ConnectionManager {
       if (message.method === 'createInitialTab') {
         try {
           logger.debug('Creating initial tab for Playwright client')
-          const tab = await chrome.tabs.create({ url: 'about:blank', active: false })
+          const { separateWindow } = store.getState()
+          const tab = separateWindow
+            ? await createTabInWorkerWindow('about:blank')
+            : await chrome.tabs.create({ url: 'about:blank', active: false })
           if (tab.id) {
             const { targetInfo, sessionId } = await attachTab(tab.id, { skipAttachedEvent: true })
             logger.debug('Initial tab created and connected:', tab.id, 'sessionId:', sessionId)
@@ -205,6 +217,12 @@ class ConnectionManager {
 
     childSessions.clear()
     this.ws = null
+
+    const { workerWindowId } = store.getState()
+    if (workerWindowId) {
+      chrome.windows.remove(workerWindowId).catch(() => {})
+    }
+    store.setState({ workerWindowId: null, separateWindow: false })
 
     if (reason === 'Extension Replaced' || code === 4001) {
       logger.debug('Connection replaced by another extension instance')
@@ -316,6 +334,8 @@ const store = createStore<ExtensionState>(() => ({
   connectionState: 'idle',
   currentTabId: undefined,
   errorText: undefined,
+  separateWindow: false,
+  workerWindowId: null,
 }))
 
 // @ts-ignore
@@ -419,6 +439,22 @@ function sendMessage(message: any): void {
 }
 
 async function syncTabGroup(): Promise<void> {
+  const { separateWindow } = store.getState()
+  if (separateWindow) {
+    try {
+      const existingGroups = await chrome.tabGroups.query({ title: 'playwriter' })
+      for (const group of existingGroups) {
+        const tabsInGroup = await chrome.tabs.query({ groupId: group.id })
+        const tabIdsToUngroup = tabsInGroup.map((t) => t.id).filter((id): id is number => id !== undefined)
+        if (tabIdsToUngroup.length > 0) {
+          await chrome.tabs.ungroup(tabIdsToUngroup)
+        }
+      }
+    } catch (e: any) {
+      logger.debug('Failed to cleanup tab groups:', e.message)
+    }
+    return
+  }
   try {
     // Only tabs with state 'connected' are in the group.
     // Tabs in 'connecting' or 'error' state are removed from the group.
@@ -563,7 +599,8 @@ async function handleCommand(msg: ExtensionCommandMessage): Promise<any> {
     case 'Target.createTarget': {
       const url = msg.params.params?.url || 'about:blank'
       logger.debug('Creating new tab with URL:', url)
-      const tab = await chrome.tabs.create({ url, active: false })
+      const { separateWindow } = store.getState()
+      const tab = separateWindow ? await createTabInWorkerWindow(url) : await chrome.tabs.create({ url, active: false })
       if (!tab.id) throw new Error('Failed to create tab')
       logger.debug('Created tab:', tab.id, 'waiting for it to load...')
       await sleep(100)
@@ -790,7 +827,51 @@ function detachTab(tabId: number, shouldDetachDebugger: boolean): void {
   }
 }
 
+let creatingWindowPromise: Promise<chrome.tabs.Tab> | null = null
 
+async function createTabInWorkerWindow(url: string): Promise<chrome.tabs.Tab> {
+  const { workerWindowId } = store.getState()
+
+  if (workerWindowId) {
+    // Verify window still exists
+    try {
+      await chrome.windows.get(workerWindowId)
+      // Add tab to existing window
+      return await chrome.tabs.create({
+        windowId: workerWindowId,
+        url,
+        active: false,
+      })
+    } catch {
+      // Window was closed, reset and create new one
+      store.setState({ workerWindowId: null })
+    }
+  }
+
+  if (creatingWindowPromise) {
+    await creatingWindowPromise
+    return createTabInWorkerWindow(url)
+  }
+
+  creatingWindowPromise = (async () => {
+    try {
+      // Create new worker window with first tab
+      const win = await chrome.windows.create({
+        url,
+        focused: false,
+        width: 1200,
+        height: 800,
+      })
+
+      store.setState({ workerWindowId: win.id! })
+      return win.tabs![0]
+    } finally {
+      creatingWindowPromise = null
+    }
+  })()
+
+  return creatingWindowPromise
+}
 
 async function connectTab(tabId: number): Promise<void> {
   try {
@@ -1094,6 +1175,12 @@ store.subscribe((state, prevState) => {
   logger.log(state)
   void updateIcons()
   updateContextMenuVisibility()
+
+  if (state.separateWindow && state.tabs.size === 0 && state.workerWindowId) {
+    chrome.windows.remove(state.workerWindowId).catch(() => {})
+    store.setState({ workerWindowId: null })
+  }
+
   const tabsChanged = serializeTabs(state.tabs) !== serializeTabs(prevState.tabs)
   if (tabsChanged) {
     tabGroupQueue = tabGroupQueue.then(syncTabGroup).catch((e) => {
