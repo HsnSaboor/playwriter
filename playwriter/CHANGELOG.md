@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.0.47
+
+### Features
+
+- **`connectToPlaywriter()`**: New convenience function for direct Playwright usage
+  - Handles server lifecycle automatically (starts if not running)
+  - Waits for extension to connect
+  - Returns ready-to-use Playwright `Browser` instance
+  - Example: `const browser = await connectToPlaywriter()`
+
+- **`ensurePersistentRelay()`**: Start relay server as persistent background process
+  - Server survives script exit (detached process)
+  - Returns immediately if already running
+  - Handles version mismatch and restarts if needed
+
+- **`waitForExtension()`**: Wait for Chrome extension to connect
+  - Polls `/extension-status` endpoint
+  - Configurable timeout and poll interval
+  - Throws `ExtensionNotConnectedError` with helpful message
+
+- **`/extension-status` endpoint**: Check extension connection status via HTTP
+  - Returns `{ connected, pageCount, pages[] }`
+  - Useful for scripting and debugging
+
+- **Error classes**: New typed errors for better error handling
+  - `RelayServerError` - Base class with port info
+  - `ExtensionNotConnectedError` - Extension not connected
+  - `RelayServerStartError` - Failed to start server
+
 ## 0.0.46
 
 ### Bug Fixes

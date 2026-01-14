@@ -8,3 +8,23 @@ export { Debugger } from './debugger.js'
 export type { BreakpointInfo, LocationInfo, EvaluateResult, ScriptInfo } from './debugger.js'
 export { getAriaSnapshot, showAriaRefLabels, hideAriaRefLabels } from './aria-snapshot.js'
 export type { AriaRef, AriaSnapshotResult } from './aria-snapshot.js'
+
+// Persistent relay server helpers
+export {
+  ensurePersistentRelay,
+  waitForExtension,
+  connectToPlaywriter,
+} from './persistent-relay.js'
+
+export type {
+  EnsurePersistentRelayResult,
+  WaitForExtensionResult,
+  ExtensionStatus,
+} from './persistent-relay.js'
+
+// Error classes
+export {
+  RelayServerError,
+  ExtensionNotConnectedError,
+  RelayServerStartError,
+} from './errors.js'

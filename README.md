@@ -68,9 +68,64 @@ Once enabled on one or more tabs, your AI assistant can:
 
 The MCP will automatically start a relay server and connect to your enabled browser tabs.
 
-### Using with Playwright
+### Using with Playwright (Recommended)
 
-You can use playwriter programmatically with playwright-core:
+The simplest way to use Playwright directly with playwriter:
+
+```typescript
+import { connectToPlaywriter } from 'playwriter'
+
+// This handles everything: starts server, waits for extension
+const browser = await connectToPlaywriter()
+
+const context = browser.contexts()[0]
+const page = context.pages()[0]
+
+await page.goto('https://example.com')
+console.log(await page.title())
+
+// IMPORTANT: Never call browser.close() - it would close user's tabs!
+// The connection will be cleaned up automatically when your script exits
+```
+
+**Prerequisites:**
+1. Install the Chrome extension
+2. Click the extension icon on a tab (turns green)
+3. Run your script
+
+### Persistent Server Pattern
+
+For repeated automation runs, you can start the server once and connect multiple times:
+
+**Terminal 1 - Start server once:**
+```typescript
+import { ensurePersistentRelay, waitForExtension } from 'playwriter'
+
+await ensurePersistentRelay()
+console.log('Server running. Click extension icon...')
+await waitForExtension()
+console.log('Ready! Keep this running.')
+
+// Keep process alive
+setInterval(() => {}, 60000)
+```
+
+**Terminal 2 - Run scripts repeatedly:**
+```typescript
+import { chromium } from 'playwright-core'
+import { getCdpUrl } from 'playwriter'
+
+// Connects instantly - no waiting!
+const browser = await chromium.connectOverCDP(getCdpUrl())
+const page = browser.contexts()[0].pages()[0]
+
+await page.goto('https://example.com')
+// ... your automation code
+```
+
+### In-Process Server (Advanced)
+
+For more control, you can start the relay server in-process:
 
 ```typescript
 import { chromium } from 'playwright-core'
@@ -78,6 +133,7 @@ import { startPlayWriterCDPRelayServer, getCdpUrl } from 'playwriter'
 
 const server = await startPlayWriterCDPRelayServer()
 
+// Note: Extension must already be connected for this to work immediately
 const browser = await chromium.connectOverCDP(getCdpUrl())
 
 const context = browser.contexts()[0]
@@ -86,7 +142,7 @@ const page = context.pages()[0]
 await page.goto('https://example.com')
 await page.screenshot({ path: 'screenshot.png' })
 
-await browser.close()
+// Don't call browser.close() - it would close user's tabs
 server.close()
 ```
 
